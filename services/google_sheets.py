@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 import gspread
+import json
 from google.oauth2.service_account import Credentials
 
 load_dotenv()
@@ -11,8 +12,13 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets"
 ]
 
-credentials = Credentials.from_service_account_file(
-    "google-service-account.json",
+
+google_credentials = json.loads(
+    os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+)
+
+credentials = Credentials.from_service_account_info(
+    google_credentials,
     scopes=SCOPES
 )
 
