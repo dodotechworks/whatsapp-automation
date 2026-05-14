@@ -9,7 +9,12 @@ from schemas import (
     ServiceUpdate,
     ChatbotSettingCreate
 )
-from services.whatsapp import send_whatsapp_message
+from services.whatsapp import (
+    send_whatsapp_message,
+    send_button_message,
+    send_service_list_message
+)
+
 from fastapi import Request
 from services.google_sheets import (
     append_lead_to_sheet,
@@ -275,10 +280,22 @@ async def whatsapp_webhook(
         phone = message_data["from"]
         message_type = message_data["type"]
 
-        if message_type != "text":
-            return {"status": "only text supported"}
+        user_message = ""
 
-        user_message = message_data["text"]["body"].strip()
+        if message_type == "text":
+            user_message = message_data["text"]["body"].strip()
+
+        elif message_type == "interactive":
+            interactive_data = message_data["interactive"]
+
+            if interactive_data["type"] == "list_reply":
+                user_message = interactive_data["list_reply"]["id"]
+
+            elif interactive_data["type"] == "button_reply":
+                user_message = interactive_data["button_reply"]["id"]
+
+        else:
+            return {"status": "unsupported message type"}
 
         print("USER PHONE:", phone, flush=True)
         print("USER MESSAGE:", user_message, flush=True)
@@ -308,30 +325,38 @@ async def whatsapp_webhook(
                 "Welcome! Please select a service:"
             )
 
-            services_text = ""
+            # FIRST TIME → SHOW LIST
+            if user_message == "" or user_message.lower() == "hi":
 
-            for index, service in enumerate(
-                services,
-                start=1
-            ):
-
-                services_text += (
-                    f"\n{index}. {service.title}"
+                response = send_service_list_message(
+                    phone,
+                    welcome_message,
+                    services
                 )
 
-            # if user entered number
-            if user_message.isdigit():
+                print("SEND RESPONSE:", response, flush=True)
 
-                selected_index = int(user_message) - 1
+            # USER SELECTED SERVICE
+            elif user_message.startswith("service_"):
 
-                if (
-                    selected_index >= 0
-                    and selected_index < len(services)
-                ):
+                service_id = int(
+                    user_message.replace("service_", "")
+                )
 
-                    selected_service = services[
-                        selected_index
-                    ]
+                selected_service = db.query(Service).filter(
+                    Service.id == service_id
+                ).first()
+
+                if not selected_service:
+
+                    response = send_whatsapp_message(
+                        phone,
+                        "Invalid service selection."
+                    )
+
+                    print("SEND RESPONSE:", response, flush=True)
+
+                else:
 
                     session.selected_service_id = (
                         selected_service.id
@@ -351,48 +376,47 @@ async def whatsapp_webhook(
                         f"{selected_service.title}\n\n"
                         f"{selected_service.description}\n\n"
                         f"{selected_service.pdf_link}\n\n"
-                        f"{booking_message}\n\n"
-                        f"Reply:\n"
-                        f"1. Book Now\n"
-                        f"2. Later"
+                        f"{booking_message}"
                     )
 
-                else:
-
-                    reply_message = (
-                        "Invalid service selection"
+                    response = send_button_message(
+                        phone,
+                        reply_message,
+                        [
+                            {
+                                "id": "book_now",
+                                "title": "Book Now"
+                            },
+                            {
+                                "id": "later",
+                                "title": "Later"
+                            }
+                        ]
                     )
+
+                    print("SEND RESPONSE:", response, flush=True)
 
             else:
 
-                reply_message = (
-                    welcome_message
-                    + "\n"
-                    + services_text
+                response = send_service_list_message(
+                    phone,
+                    welcome_message,
+                    services
                 )
 
-            response = send_whatsapp_message(
-                phone,
-                reply_message
-            )
-
-            print(
-                "SEND RESPONSE:",
-                response,
-                flush=True
-            )
+                print("SEND RESPONSE:", response, flush=True)
 
         # STEP 2 - BOOK OR LATER
         elif session.current_step == "booking_choice":
 
-            if user_message == "1" or user_message.lower() == "book":
+            if user_message == "book_now":
 
                 session.current_step = "ask_name"
                 db.commit()
 
                 reply_message = "Please enter your name."
 
-            elif user_message == "2" or user_message.lower() == "later":
+            elif user_message == "later":
 
                 selected_service = db.query(Service).filter(
                     Service.id == session.selected_service_id
@@ -412,12 +436,7 @@ async def whatsapp_webhook(
                 reply_message = "No problem. We will contact you later."
 
             else:
-                reply_message = (
-                    "Invalid option.\n"
-                    "Please reply:\n"
-                    "1. Book Now\n"
-                    "2. Later"
-                )
+                reply_message = "Please select Book Now or Later from the buttons."
 
             response = send_whatsapp_message(phone, reply_message)
             print("SEND RESPONSE:", response, flush=True)
