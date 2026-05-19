@@ -14,7 +14,7 @@ from services.whatsapp import (
     send_button_message,
     send_service_list_message
 )
-
+from datetime import datetime, timedelta
 from fastapi import Request
 from services.google_sheets import (
     append_lead_to_sheet,
@@ -300,19 +300,44 @@ async def whatsapp_webhook(
         print("USER PHONE:", phone, flush=True)
         print("USER MESSAGE:", user_message, flush=True)
 
+        SESSION_TIMEOUT_MINUTES = 5
+
         session = db.query(UserSession).filter(
             UserSession.phone == phone
         ).first()
 
+        if session:
+
+            if session.last_active_at:
+
+                inactive_time = (
+                    datetime.utcnow() - session.last_active_at
+                )
+
+                if inactive_time > timedelta(
+                    minutes=SESSION_TIMEOUT_MINUTES
+                ):
+
+                    db.delete(session)
+                    db.commit()
+
+                    session = None
+
         if not session:
+
             session = UserSession(
                 phone=phone,
-                current_step="select_service"
+                current_step="select_service",
+                last_active_at=datetime.utcnow()
             )
 
             db.add(session)
             db.commit()
             db.refresh(session)
+
+        session.last_active_at = datetime.utcnow()
+
+        db.commit()
 
         services = db.query(Service).all()
 

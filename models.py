@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, DateTime
+from datetime import datetime
 from database import Base
 
 class Service(Base):
@@ -30,6 +31,8 @@ class UserSession(Base):
     temp_email = Column(String, nullable=True)
     temp_mobile = Column(String, nullable=True)
     temp_datetime = Column(String, nullable=True)
+
+    last_active_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Lead(Base):
