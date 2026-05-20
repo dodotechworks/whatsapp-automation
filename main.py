@@ -3,7 +3,7 @@ import re
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, get_db
-from models import Base, Service, ChatbotSetting, UserSession, Lead
+from models import Base, Service, ChatbotSetting, UserSession, Lead, ProcessedMessage
 from schemas import (
     ServiceCreate,
     ServiceUpdate,
@@ -276,6 +276,23 @@ async def whatsapp_webhook(
             return {"status": "no message"}
 
         message_data = value["messages"][0]
+
+        message_id = message_data["id"]
+
+        already_processed = db.query(ProcessedMessage).filter(
+            ProcessedMessage.message_id == message_id
+        ).first()
+
+        if already_processed:
+            print("Duplicate webhook ignored:", message_id, flush=True)
+            return {"status": "duplicate ignored"}
+
+        processed_message = ProcessedMessage(
+            message_id=message_id
+        )
+
+        db.add(processed_message)
+        db.commit()        
 
         phone = message_data["from"]
         message_type = message_data["type"]

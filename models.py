@@ -49,3 +49,9 @@ class Lead(Base):
     preferred_datetime = Column(String, nullable=True)
 
     status = Column(String)  # converted / dropped
+
+class ProcessedMessage(Base):
+    __tablename__ = "processed_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_id = Column(String, unique=True, index=True)
